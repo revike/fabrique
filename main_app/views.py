@@ -1,12 +1,14 @@
 from datetime import datetime
 
+from django.contrib.sessions.models import Session
 from django.http import Http404
 from rest_framework import generics, status
 from rest_framework.generics import get_object_or_404
 from rest_framework.permissions import IsAdminUser, AllowAny
 from rest_framework.response import Response
 
-from main_app.models import Survey, Question, OptionAnswer, Answer
+from main_app.models import Survey, Question, OptionAnswer, Answer, \
+    UserAnonymous
 from main_app.serializers import SurveyModelSerializer, \
     QuestionModelSerializer, OptionAnswerModelSerializer, AnswerModelSerializer
 
@@ -223,7 +225,7 @@ class SurveyList(generics.ListAPIView):
         return super().list(self.request)
 
 
-class SurveyDetail(generics.RetrieveAPIView):
+class SurveyDetail(generics.RetrieveAPIView, generics.CreateAPIView):
     """APIView for Survey"""
     queryset = Survey.objects.filter(is_active=True)
     serializer_class = SurveyModelSerializer
@@ -259,7 +261,7 @@ class QuestionDetail(generics.RetrieveAPIView):
         return AdminQuestionDetail.get_object(self)
 
 
-class AnswerView(generics.ListAPIView, generics.CreateAPIView):
+class AnswerView(generics.ListAPIView, generics.CreateAPIView): # Error
     """APIView for Answer"""
     queryset = Answer.objects.filter(survey_id__is_active=True)
     serializer_class = AnswerModelSerializer
@@ -275,11 +277,39 @@ class AnswerView(generics.ListAPIView, generics.CreateAPIView):
         self.check_object_permissions(self.request, obj)
         return obj
 
-    def get_serializer_class(self):
-        return super().get_serializer_class()
+    def list(self, request, *args, **kwargs):
+        key = request.session.session_key
+        if key is None:
+            request.session.create()
+            key = request.session.session_key
+        user_id = UserAnonymous.objects.filter(key=key).first()
+        if not user_id:
+            user_id = UserAnonymous.objects.create(key=key)
+        self.request.session['user_id'] = user_id.id
+        Session.objects.filter(session_key=key).first().expire_date = 99999999
 
-    def get(self, request, *args, **kwargs):
-        return super().get(request)
+        return super().list(self.request)
 
     def create(self, request, *args, **kwargs):
-        return super().create(self.request)
+        types = ['CH', 'MC']
+        question = Question.objects.filter(id=kwargs['pk_id'],
+                                           survey_id=kwargs['pk'])
+        type_answer = question.first().answer_type
+        if type_answer in types:
+            answer_serial = AnswerModelSerializer(data=request.data)
+            answer_serial.is_valid(raise_exception=True)
+            answer_dict = dict(answer_serial.validated_data)
+            user_id = UserAnonymous.objects.get(
+                id=self.request.session['user_id'])
+            answer_dict['answer_text'] = ''
+            answer_dict['question_id'] = question.first()
+            answer_dict['user_id'] = user_id
+            answer_dict['survey_id'] = question.first().survey_id
+            new_answer = Answer(**answer_dict) # Error
+            new_answer.save()
+            result = AnswerModelSerializer()
+            headers = self.get_success_headers(result.data)
+            return Response(result.data, status=status.HTTP_201_CREATED,
+                            headers=headers)
+        else:
+            return super().create(self.request)

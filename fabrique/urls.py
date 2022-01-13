@@ -17,7 +17,7 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from rest_framework.urlpatterns import format_suffix_patterns
-
+from .documentations import urlpatterns as urls
 from main_app import views as main
 
 urlpatterns = [
@@ -35,7 +35,7 @@ urlpatterns = [
     path('survey/', main.SurveyList.as_view()),
     path('survey/<int:pk>/', main.SurveyDetail.as_view()),
     path('survey/<int:pk>/question/', main.QuestionList.as_view()),
-    path('survey/<int:pk>/question/<int:pk_id>',
+    path('survey/<int:pk>/question/<int:pk_id>/',
          main.QuestionDetail.as_view()),
     path('survey/<int:pk>/question/<int:pk_id>/answer/',
          main.AnswerView.as_view()),
@@ -43,5 +43,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api-auth/', include('rest_framework.urls')),
 ]
+
+urlpatterns += urls
 
 urlpatterns = format_suffix_patterns(urlpatterns)

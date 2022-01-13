@@ -225,7 +225,7 @@ class SurveyList(generics.ListAPIView):
         return super().list(self.request)
 
 
-class SurveyDetail(generics.RetrieveAPIView, generics.CreateAPIView):
+class SurveyDetail(generics.RetrieveAPIView):
     """APIView for Survey"""
     queryset = Survey.objects.filter(is_active=True)
     serializer_class = SurveyModelSerializer

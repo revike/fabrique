@@ -10,7 +10,7 @@ class Survey(models.Model):
 
     name = models.CharField(max_length=64, verbose_name='название опроса')
     description = models.TextField(blank=True, verbose_name='описание')
-    created_at = models.DateField(auto_now_add=True,
+    created_at = models.DateField(auto_now_add=True, editable=False,
                                   verbose_name='дата и время создания')
     finished_at = models.DateField(verbose_name='дата окончания')
     is_active = models.BooleanField(default=True, db_index=True,

@@ -47,4 +47,4 @@ python manage.py runserver
 
 API Документация
 ****************
-[API.md](README.md)
+[your_domain_name.com/api-doc/](http://127.0.0.1:8000/api-doc/)

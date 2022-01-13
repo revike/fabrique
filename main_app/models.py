@@ -58,6 +58,18 @@ class OptionAnswer(models.Model):
     option_answer_text = models.CharField(max_length=256,
                                           verbose_name='вариант ответа')
 
+    def __str__(self):
+        return f'{self.option_answer_text}'
+
+
+class UserAnonymous(models.Model):
+    """UserID table"""
+    key = models.CharField(max_length=128, unique=True,
+                           verbose_name='session_key')
+
+    def __str__(self):
+        return f'{self.id}'
+
 
 class Answer(models.Model):
     """Answer table"""
@@ -66,13 +78,18 @@ class Answer(models.Model):
         verbose_name = 'ответы'
         verbose_name_plural = 'ответы'
 
-    user_id = models.IntegerField(db_index=True, verbose_name='id user')
+    user_id = models.ForeignKey(to='UserAnonymous', on_delete=models.CASCADE,
+                                related_name='answer', verbose_name='id user')
     survey_id = models.ForeignKey(to='Survey', on_delete=models.CASCADE,
                                   db_index=True, related_name='answer',
                                   verbose_name='опрос')
     question_id = models.ForeignKey(to='Question', on_delete=models.CASCADE,
                                     related_name='answer',
                                     db_index=True, verbose_name='вопрос')
+    option_answer_text = models.ManyToManyField(
+        to='OptionAnswer',
+        related_name='answer',
+        verbose_name='опциональный ответ')
     answer_text = models.CharField(max_length=256, verbose_name='ответ')
     created_at = models.DateField(auto_now_add=True,
                                   verbose_name='дата и время ответа')

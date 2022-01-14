@@ -39,6 +39,7 @@ urlpatterns = [
          main.QuestionDetail.as_view()),
     path('survey/<int:pk>/question/<int:pk_id>/answer/',
          main.AnswerView.as_view()),
+    path('answers/', main.AnswerUserList.as_view()),
 
     path('admin/', admin.site.urls),
     path('api-auth/', include('rest_framework.urls')),

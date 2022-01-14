@@ -299,11 +299,18 @@ class AnswerView(generics.ListAPIView, generics.CreateAPIView):  # Error
             answer_dict = dict(answer_serial.validated_data)
             user_id = UserAnonymous.objects.get(
                 id=self.request.session['user_id'])
-            answer_dict['answer_text'] = ''
             answer_dict['question_id'] = question.first()
             answer_dict['user_id'] = user_id
             answer_dict['survey_id'] = question.first().survey_id
-            new_answer = Answer.objects.create(**answer_dict)  # Error
+            print('-' * 10)
+            print(answer_dict)
+            print('-' * 10)
+            # new_answer = Answer.objects.create(**answer_dict)  # Error
+            new_answer = Answer.objects.create(
+                user_id=answer_dict['user_id'],
+                survey_id=answer_dict['survey_id'],
+                question_id=answer_dict['question_id'],
+            )
             new_answer.save()
             result = AnswerModelSerializer()
             headers = self.get_success_headers(result.data)
@@ -325,7 +332,8 @@ class AnswerView(generics.ListAPIView, generics.CreateAPIView):  # Error
             if not new_answer:
                 new_answer = Answer.objects.create(**answer_dict)
                 new_answer.save()
-            result = AnswerTextModelSerializer()
+            result = AnswerTextModelSerializer(data=request.data)
+            result.is_valid(raise_exception=True)
             headers = self.get_success_headers(result.data)
             return Response(result.data, status=status.HTTP_201_CREATED,
                             headers=headers)

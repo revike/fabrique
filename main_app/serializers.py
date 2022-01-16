@@ -1,4 +1,4 @@
-from rest_framework.serializers import ModelSerializer, BooleanField, CharField, ChoiceField
+from rest_framework.serializers import ModelSerializer, BooleanField, CharField
 
 from main_app.models import Survey, Question, OptionAnswer, Answer
 

@@ -1,8 +1,11 @@
-from rest_framework.serializers import ModelSerializer
+from rest_framework.serializers import ModelSerializer, BooleanField, CharField, ChoiceField
+
 from main_app.models import Survey, Question, OptionAnswer, Answer
 
 
 class AnswerAdminSerializer(ModelSerializer):
+    option_answer_text_id = CharField()
+
     class Meta:
         model = Answer
         fields = '__all__'
@@ -11,7 +14,7 @@ class AnswerAdminSerializer(ModelSerializer):
 class AnswerModelSerializer(ModelSerializer):
     class Meta:
         model = Answer
-        fields = ('option_answer_text',)
+        fields = ('option_answer_text_id',)
 
 
 class AnswerTextModelSerializer(ModelSerializer):
@@ -48,6 +51,7 @@ class SurveyModelSerializer(ModelSerializer):
 class SurveyAdminModelSerializer(ModelSerializer):
     question = QuestionModelSerializer(many=True, read_only=True)
     answer = AnswerAdminSerializer(many=True, read_only=True)
+    is_active = BooleanField(default=True)
 
     class Meta:
         model = Survey

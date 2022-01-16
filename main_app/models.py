@@ -86,10 +86,9 @@ class Answer(models.Model):
     question_id = models.ForeignKey(to='Question', on_delete=models.CASCADE,
                                     related_name='answer',
                                     db_index=True, verbose_name='вопрос')
-    option_answer_text = models.ManyToManyField(
-        to='OptionAnswer',
-        related_name='answer', blank=True,
-        verbose_name='опциональный ответ')
+    option_answer_text_id = models.ForeignKey(
+        to='OptionAnswer', on_delete=models.CASCADE, related_name='answer',
+        blank=True, verbose_name='опциональный ответ', null=True)
     answer_text = models.CharField(max_length=256, blank=True,
                                    verbose_name='ответ')
     created_at = models.DateField(auto_now_add=True,

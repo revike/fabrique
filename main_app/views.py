@@ -1,18 +1,17 @@
 from datetime import datetime
 
-from django.contrib.sessions.models import Session
 from django.http import Http404
 from rest_framework import generics, status
 from rest_framework.generics import get_object_or_404
 from rest_framework.permissions import IsAdminUser, AllowAny
 from rest_framework.response import Response
 
-from main_app.models import Survey, Question, OptionAnswer, Answer, \
-    UserAnonymous
+from main_app.models import Survey, Question, OptionAnswer, Answer
 from main_app.serializers import SurveyModelSerializer, \
     QuestionModelSerializer, OptionAnswerModelSerializer, \
     AnswerModelSerializer, AnswerTextModelSerializer, \
     SurveyAdminModelSerializer, AnswerAdminSerializer
+from main_app.service import key_session, add_to_dict, get_list, detail_object
 
 
 class AdminSurveyList(generics.ListAPIView, generics.CreateAPIView):
@@ -71,17 +70,7 @@ class AdminQuestionList(generics.ListAPIView, generics.CreateAPIView):
     permission_classes = [IsAdminUser]
 
     def list(self, request, *args, **kwargs):
-        try:
-            survey = Survey.objects.get(id=kwargs['pk'])
-            if survey.finished_at <= datetime.now().date():
-                survey.is_active = False
-                survey.save()
-            queryset = self.filter_queryset(
-                self.get_queryset().filter(survey_id=survey.id))
-            serializer = self.get_serializer(queryset, many=True)
-            return Response(serializer.data)
-        except AttributeError:
-            raise Http404
+        return get_list(self, kwargs)
 
     def create(self, request, *args, **kwargs):
         survey = Survey.objects.get(id=kwargs['pk'])
@@ -106,13 +95,7 @@ class AdminQuestionDetail(generics.RetrieveAPIView,
     permission_classes = [IsAdminUser]
 
     def get_object(self):
-        survey = self.kwargs['pk']
-        filter_kwargs = {self.lookup_field: self.kwargs['pk_id']}
-        obj = get_object_or_404(
-            self.queryset.filter(survey_id=survey),
-            **filter_kwargs)
-        self.check_object_permissions(self.request, obj)
-        return obj
+        return detail_object(self)
 
     def retrieve(self, request, *args, **kwargs):
         survey = Survey.objects.filter(id=kwargs['pk'])
@@ -230,8 +213,7 @@ class QuestionList(generics.ListAPIView):
     permission_classes = [AllowAny]
 
     def list(self, request, *args, **kwargs):
-        return AdminQuestionList.list(self=self, request=request, *args,
-                                      **kwargs)
+        return get_list(self, kwargs)
 
 
 class QuestionDetail(generics.RetrieveAPIView):
@@ -241,16 +223,15 @@ class QuestionDetail(generics.RetrieveAPIView):
     permission_classes = [AllowAny]
 
     def get_object(self):
-        return AdminQuestionDetail.get_object(self)
+        return detail_object(self)
 
 
-class AnswerView(generics.ListAPIView, generics.CreateAPIView):  # Error
+class AnswerView(generics.CreateAPIView):
     """APIView for Answer"""
     queryset = Answer.objects.filter(survey_id__is_active=True)
     permission_classes = [AllowAny]
 
     def get_serializer(self, *args, **kwargs):
-        # Answer.objects.all().delete()
         kwargs_id = self.request.parser_context['kwargs']
         types = ['CH', 'MC']
         question = Question.objects.filter(id=kwargs_id['pk_id'],
@@ -263,30 +244,23 @@ class AnswerView(generics.ListAPIView, generics.CreateAPIView):  # Error
         kwargs.setdefault('context', self.get_serializer_context())
         return serializer_class(*args, **kwargs)
 
-    def get_object(self):
-        survey = self.kwargs['pk']
-        question = self.kwargs['pk_id']
-        filter_kwargs = {self.lookup_field: self.kwargs['pk_id']}
-        obj = get_object_or_404(
-            self.queryset.filter(question_id=question, survey_id=survey),
-            **filter_kwargs)
-        self.check_object_permissions(self.request, obj)
-        return obj
-
-    def list(self, request, *args, **kwargs):
-        key = request.session.session_key
-        if key is None:
-            request.session.create()
-            key = request.session.session_key
-        user_id = UserAnonymous.objects.filter(key=key).first()
-        if not user_id:
-            user_id = UserAnonymous.objects.create(key=key)
-        self.request.session['user_id'] = user_id.id
-        Session.objects.filter(session_key=key).first().expire_date = 99999999
-        user_id = request.session['user_id']
-        queryset = self.filter_queryset(self.get_queryset().filter(user_id=user_id))
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
+    # def get_object(self):
+    #     survey = self.kwargs['pk']
+    #     question = self.kwargs['pk_id']
+    #     filter_kwargs = {self.lookup_field: self.kwargs['pk_id']}
+    #     obj = get_object_or_404(
+    #         self.queryset.filter(question_id=question, survey_id=survey),
+    #         **filter_kwargs)
+    #     self.check_object_permissions(self.request, obj)
+    #     return obj
+    #
+    # def list(self, request, *args, **kwargs):
+    #     user_id = key_session(request)
+    #     queryset = self.filter_queryset(
+    #         self.get_queryset().filter(user_id=user_id,
+    #                                    question_id=kwargs['pk_id']))
+    #     serializer = self.get_serializer(queryset, many=True)
+    #     return Response(serializer.data)
 
     def create(self, request, *args, **kwargs):
         types = ['CH', 'MC']
@@ -296,42 +270,16 @@ class AnswerView(generics.ListAPIView, generics.CreateAPIView):  # Error
         if type_answer in types:
             answer_serial = AnswerModelSerializer(data=request.data)
             answer_serial.is_valid(raise_exception=True)
-            answer_dict = dict(answer_serial.validated_data)
-            user_id = UserAnonymous.objects.get(
-                id=self.request.session['user_id'])
-            answer_dict['question_id'] = question.first()
-            answer_dict['user_id'] = user_id
-            answer_dict['survey_id'] = question.first().survey_id
-            print('-' * 10)
-            print(answer_dict)
-            print('-' * 10)
-            # new_answer = Answer.objects.create(**answer_dict)  # Error
-            new_answer = Answer.objects.create(
-                user_id=answer_dict['user_id'],
-                survey_id=answer_dict['survey_id'],
-                question_id=answer_dict['question_id'],
-            )
-            new_answer.save()
-            result = AnswerModelSerializer()
+            add_to_dict(request, answer_serial, question, kwargs)
+            result = AnswerModelSerializer(data=request.data)
+            result.is_valid(raise_exception=True)
             headers = self.get_success_headers(result.data)
             return Response(result.data, status=status.HTTP_201_CREATED,
                             headers=headers)
         else:
             answer_serial = AnswerTextModelSerializer(data=request.data)
             answer_serial.is_valid(raise_exception=True)
-            answer_dict = dict(answer_serial.validated_data)
-            user_id = UserAnonymous.objects.get(
-                id=self.request.session['user_id'])
-            answer_dict['question_id'] = question.first()
-            answer_dict['user_id'] = user_id
-            answer_dict['survey_id'] = question.first().survey_id
-            new_answer = Answer.objects.filter(
-                question_id=kwargs['pk_id'],
-                user_id=self.request.session[
-                    'user_id']).update(**answer_dict)
-            if not new_answer:
-                new_answer = Answer.objects.create(**answer_dict)
-                new_answer.save()
+            add_to_dict(request, answer_serial, question, kwargs)
             result = AnswerTextModelSerializer(data=request.data)
             result.is_valid(raise_exception=True)
             headers = self.get_success_headers(result.data)
@@ -346,16 +294,7 @@ class AnswerUserList(generics.ListAPIView):
     permission_classes = [AllowAny]
 
     def list(self, request, *args, **kwargs):
-        key = request.session.session_key
-        if key is None:
-            request.session.create()
-            key = request.session.session_key
-        user_id = UserAnonymous.objects.filter(key=key).first()
-        if not user_id:
-            user_id = UserAnonymous.objects.create(key=key)
-        self.request.session['user_id'] = user_id.id
-        Session.objects.filter(session_key=key).first().expire_date = 99999999
-        user_id = request.session['user_id']
+        user_id = key_session(request)
         queryset = self.filter_queryset(
             self.get_queryset().filter(user_id=user_id))
         serializer = self.get_serializer(queryset, many=True)

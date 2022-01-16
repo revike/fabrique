@@ -1,22 +1,23 @@
 from datetime import datetime
 
-from django.contrib.sessions.models import Session
 from django.http import Http404
 from rest_framework import generics, status
 from rest_framework.generics import get_object_or_404
 from rest_framework.permissions import IsAdminUser, AllowAny
 from rest_framework.response import Response
 
-from main_app.models import Survey, Question, OptionAnswer, Answer, \
-    UserAnonymous
+from main_app.models import Survey, Question, OptionAnswer, Answer
 from main_app.serializers import SurveyModelSerializer, \
-    QuestionModelSerializer, OptionAnswerModelSerializer, AnswerModelSerializer
+    QuestionModelSerializer, OptionAnswerModelSerializer, \
+    AnswerModelSerializer, AnswerTextModelSerializer, \
+    SurveyAdminModelSerializer, AnswerAdminSerializer
+from main_app.service import key_session, add_to_dict, get_list, detail_object
 
 
 class AdminSurveyList(generics.ListAPIView, generics.CreateAPIView):
     """APIView for Survey Admin"""
-    queryset = Survey.objects.filter(is_active=True)
-    serializer_class = SurveyModelSerializer
+    queryset = Survey.objects.all()
+    serializer_class = SurveyAdminModelSerializer
     permission_classes = [IsAdminUser]
 
     def create(self, request, *args, **kwargs):
@@ -40,7 +41,7 @@ class AdminSurveyDetail(generics.RetrieveAPIView,
                         generics.DestroyAPIView):
     """APIView for Survey Detail Admin"""
     serializer_class = SurveyModelSerializer
-    queryset = Survey.objects.filter(is_active=True)
+    queryset = Survey.objects.all()
     permission_classes = [IsAdminUser]
 
     def update(self, request, *args, **kwargs):
@@ -59,35 +60,17 @@ class AdminSurveyDetail(generics.RetrieveAPIView,
         if survey.first().finished_at <= datetime.now().date():
             survey.first().is_active = False
             survey.first().save()
-            raise Exception('Survey Finished')
         return super().retrieve(self.request)
 
 
 class AdminQuestionList(generics.ListAPIView, generics.CreateAPIView):
     """APIView for Question Admin"""
-    queryset = Question.objects.filter(is_active=True,
-                                       survey_id__is_active=True)
+    queryset = Question.objects.all()
     serializer_class = QuestionModelSerializer
     permission_classes = [IsAdminUser]
 
     def list(self, request, *args, **kwargs):
-        try:
-            survey = Survey.objects.get(id=kwargs['pk'])
-            if survey.finished_at <= datetime.now().date():
-                survey.is_active = False
-                survey.save()
-            queryset = self.filter_queryset(
-                self.get_queryset().filter(survey_id=survey.id,
-                                           survey_id__is_active=True))
-            page = self.paginate_queryset(queryset)
-            if page is not None:
-                serializer = self.get_serializer(page, many=True)
-                return self.get_paginated_response(serializer.data)
-
-            serializer = self.get_serializer(queryset, many=True)
-            return Response(serializer.data)
-        except AttributeError:
-            raise Http404
+        return get_list(self, kwargs)
 
     def create(self, request, *args, **kwargs):
         survey = Survey.objects.get(id=kwargs['pk'])
@@ -107,33 +90,24 @@ class AdminQuestionDetail(generics.RetrieveAPIView,
                           generics.UpdateAPIView,
                           generics.DestroyAPIView):
     """APIView for Question Detail Admin"""
-    queryset = Question.objects.filter(is_active=True,
-                                       survey_id__is_active=True)
+    queryset = Question.objects.all()
     serializer_class = QuestionModelSerializer
     permission_classes = [IsAdminUser]
 
     def get_object(self):
-        survey = self.kwargs['pk']
-        filter_kwargs = {self.lookup_field: self.kwargs['pk_id']}
-        obj = get_object_or_404(
-            self.queryset.filter(survey_id=survey, survey_id__is_active=True),
-            **filter_kwargs)
-        self.check_object_permissions(self.request, obj)
-        return obj
+        return detail_object(self)
 
     def retrieve(self, request, *args, **kwargs):
         survey = Survey.objects.filter(id=kwargs['pk'])
         if survey.first().finished_at <= datetime.now().date():
             survey.first().is_active = False
             survey.first().save()
-            raise Exception('Survey Finished')
         return super().retrieve(self.request)
 
 
 class AdminOptionAnswerList(generics.ListAPIView, generics.CreateAPIView):
     """APIView for OptionAnswer Admin"""
-    queryset = OptionAnswer.objects.filter(
-        question_id__survey_id__is_active=True)
+    queryset = OptionAnswer.objects.all()
     serializer_class = OptionAnswerModelSerializer
     permission_classes = [IsAdminUser]
 
@@ -153,13 +127,7 @@ class AdminOptionAnswerList(generics.ListAPIView, generics.CreateAPIView):
                 queryset = self.filter_queryset(
                     self.get_queryset().filter(
                         question_id=question.id,
-                        question_id__survey_id=survey,
-                        question_id__survey_id__is_active=True))
-                page = self.paginate_queryset(queryset)
-                if page is not None:
-                    serializer = self.get_serializer(page, many=True)
-                    return self.get_paginated_response(serializer.data)
-
+                        question_id__survey_id=survey))
                 serializer = self.get_serializer(queryset, many=True)
                 return Response(serializer.data)
             raise Http404
@@ -189,8 +157,7 @@ class AdminOptionAnswerDetail(generics.RetrieveAPIView,
                               generics.UpdateAPIView,
                               generics.DestroyAPIView):
     """APIView for OptionAnswer Admin"""
-    queryset = OptionAnswer.objects.filter(
-        question_id__survey_id__is_active=True)
+    queryset = OptionAnswer.objects.all()
     serializer_class = OptionAnswerModelSerializer
     permission_classes = [IsAdminUser]
 
@@ -207,7 +174,6 @@ class AdminOptionAnswerDetail(generics.RetrieveAPIView,
         if survey.first().finished_at <= datetime.now().date():
             survey.first().is_active = False
             survey.first().save()
-            raise Exception('Survey Finished')
         return super().retrieve(self.request)
 
 
@@ -247,8 +213,7 @@ class QuestionList(generics.ListAPIView):
     permission_classes = [AllowAny]
 
     def list(self, request, *args, **kwargs):
-        return AdminQuestionList.list(self=self, request=request, *args,
-                                      **kwargs)
+        return get_list(self, kwargs)
 
 
 class QuestionDetail(generics.RetrieveAPIView):
@@ -258,37 +223,44 @@ class QuestionDetail(generics.RetrieveAPIView):
     permission_classes = [AllowAny]
 
     def get_object(self):
-        return AdminQuestionDetail.get_object(self)
+        return detail_object(self)
 
 
-class AnswerView(generics.ListAPIView, generics.CreateAPIView): # Error
+class AnswerView(generics.CreateAPIView):
     """APIView for Answer"""
     queryset = Answer.objects.filter(survey_id__is_active=True)
-    serializer_class = AnswerModelSerializer
     permission_classes = [AllowAny]
 
-    def get_object(self):
-        survey = self.kwargs['pk']
-        question = self.kwargs['pk_id']
-        filter_kwargs = {self.lookup_field: self.kwargs['pk_id']}
-        obj = get_object_or_404(
-            self.queryset.filter(question_id=question, survey_id=survey),
-            **filter_kwargs)
-        self.check_object_permissions(self.request, obj)
-        return obj
+    def get_serializer(self, *args, **kwargs):
+        kwargs_id = self.request.parser_context['kwargs']
+        types = ['CH', 'MC']
+        question = Question.objects.filter(id=kwargs_id['pk_id'],
+                                           survey_id=kwargs_id['pk'])
+        type_answer = question.first().answer_type
+        if type_answer in types:
+            serializer_class = AnswerModelSerializer
+        else:
+            serializer_class = AnswerTextModelSerializer
+        kwargs.setdefault('context', self.get_serializer_context())
+        return serializer_class(*args, **kwargs)
 
-    def list(self, request, *args, **kwargs):
-        key = request.session.session_key
-        if key is None:
-            request.session.create()
-            key = request.session.session_key
-        user_id = UserAnonymous.objects.filter(key=key).first()
-        if not user_id:
-            user_id = UserAnonymous.objects.create(key=key)
-        self.request.session['user_id'] = user_id.id
-        Session.objects.filter(session_key=key).first().expire_date = 99999999
-
-        return super().list(self.request)
+    # def get_object(self):
+    #     survey = self.kwargs['pk']
+    #     question = self.kwargs['pk_id']
+    #     filter_kwargs = {self.lookup_field: self.kwargs['pk_id']}
+    #     obj = get_object_or_404(
+    #         self.queryset.filter(question_id=question, survey_id=survey),
+    #         **filter_kwargs)
+    #     self.check_object_permissions(self.request, obj)
+    #     return obj
+    #
+    # def list(self, request, *args, **kwargs):
+    #     user_id = key_session(request)
+    #     queryset = self.filter_queryset(
+    #         self.get_queryset().filter(user_id=user_id,
+    #                                    question_id=kwargs['pk_id']))
+    #     serializer = self.get_serializer(queryset, many=True)
+    #     return Response(serializer.data)
 
     def create(self, request, *args, **kwargs):
         types = ['CH', 'MC']
@@ -298,18 +270,32 @@ class AnswerView(generics.ListAPIView, generics.CreateAPIView): # Error
         if type_answer in types:
             answer_serial = AnswerModelSerializer(data=request.data)
             answer_serial.is_valid(raise_exception=True)
-            answer_dict = dict(answer_serial.validated_data)
-            user_id = UserAnonymous.objects.get(
-                id=self.request.session['user_id'])
-            answer_dict['answer_text'] = ''
-            answer_dict['question_id'] = question.first()
-            answer_dict['user_id'] = user_id
-            answer_dict['survey_id'] = question.first().survey_id
-            new_answer = Answer(**answer_dict) # Error
-            new_answer.save()
-            result = AnswerModelSerializer()
+            add_to_dict(request, answer_serial, question, kwargs)
+            result = AnswerModelSerializer(data=request.data)
+            result.is_valid(raise_exception=True)
             headers = self.get_success_headers(result.data)
             return Response(result.data, status=status.HTTP_201_CREATED,
                             headers=headers)
         else:
-            return super().create(self.request)
+            answer_serial = AnswerTextModelSerializer(data=request.data)
+            answer_serial.is_valid(raise_exception=True)
+            add_to_dict(request, answer_serial, question, kwargs)
+            result = AnswerTextModelSerializer(data=request.data)
+            result.is_valid(raise_exception=True)
+            headers = self.get_success_headers(result.data)
+            return Response(result.data, status=status.HTTP_201_CREATED,
+                            headers=headers)
+
+
+class AnswerUserList(generics.ListAPIView):
+    """APIView for AnswerUserList"""
+    queryset = Answer.objects.all()
+    serializer_class = AnswerAdminSerializer
+    permission_classes = [AllowAny]
+
+    def list(self, request, *args, **kwargs):
+        user_id = key_session(request)
+        queryset = self.filter_queryset(
+            self.get_queryset().filter(user_id=user_id))
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
